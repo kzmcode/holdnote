@@ -107,8 +107,8 @@ struct App {
 
 pub fn run() -> anyhow::Result<()> {
     if std::env::args().any(|a| a == "--overlay-demo") {
-        // TODO(integration): --overlay-demo -> crate::ui::overlay::demo(mtm) (added by the overlay agent).
-        log::warn!("--overlay-demo is not wired yet");
+        let mtm = MainThreadMarker::new().ok_or_else(|| anyhow::anyhow!("must run on the main thread"))?;
+        crate::ui::overlay::demo(mtm);
         return Ok(());
     }
 
@@ -405,7 +405,7 @@ impl App {
                         self.model_progress = None;
                         self.model_message = None;
                         notify("HoldNote", &format!("音声認識モデル({model})の準備ができました"));
-                        self.worker.wake();
+                        self.worker.retry_all();
                     }
                     Some(Err(e)) => {
                         self.model_progress = None;
@@ -423,7 +423,7 @@ impl App {
                             self.update_settings(|s| s.google_account_email = Some(email));
                         }
                         self.drive_message = Some(("Googleアカウントに接続しました".into(), false));
-                        self.worker.wake();
+                        self.worker.retry_all();
                     }
                     Err(e) => self.drive_message = Some((format!("Google連携に失敗しました: {e}"), true)),
                 }
@@ -439,7 +439,7 @@ impl App {
                             s.drive_folder_name = Some(f.name);
                         });
                         self.drive_message = Some((format!("保存先フォルダ: {name}"), false));
-                        self.worker.wake();
+                        self.worker.retry_all();
                     }
                     Err(e) => self.drive_message = Some((format!("フォルダを選択できませんでした: {e}"), true)),
                 }
@@ -812,7 +812,10 @@ impl App {
             UiAction::SetGoogleClient { client_id, client_secret } => {
                 self.update_settings(|s| {
                     s.google_client_id = client_id.trim().to_string();
-                    s.google_client_secret = client_secret.trim().to_string();
+                    // An empty secret field means "keep the saved one" (the field is never pre-filled).
+                    if !client_secret.trim().is_empty() {
+                        s.google_client_secret = client_secret.trim().to_string();
+                    }
                 });
                 self.drive_message = Some(("クライアント情報を保存しました".into(), false));
             }
@@ -978,10 +981,9 @@ impl App {
         }
         let mut b = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
-            .with_icon_as_template(true) // deprecated alias; icon is set below
             .with_tooltip("HoldNote");
         if let Some(icon) = load_icon() {
-            b = b.with_icon(icon);
+            b = b.with_icon_templated(icon);
         }
         match b.build() {
             Ok(tray) => {

@@ -155,6 +155,17 @@ impl Worker {
             return;
         }
         let has_md = job.markdown_path.as_ref().is_some_and(|p| p.exists());
+        // The snapshot is kept on retry, except when it is missing or no longer reachable:
+        // an explicit retry then targets the folder currently chosen in settings (API-10).
+        let dest_broken = job.destination.as_deref().is_none_or(str::is_empty)
+            || matches!(job.last_error_code.as_deref(), Some("destination_unavailable" | "no_destination"));
+        if dest_broken {
+            let s = self.settings.read().unwrap();
+            if s.drive_folder_id.is_some() {
+                job.destination = s.drive_folder_id.clone();
+                job.destination_name = s.drive_folder_name.clone();
+            }
+        }
         job.next_retry_at = None;
         job.last_error_code = None;
         job.last_error_message = None;
