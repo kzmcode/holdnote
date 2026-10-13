@@ -485,6 +485,7 @@ impl SettingsWindow {
             )
         };
         seg.setSegmentStyle(NSSegmentStyle::Automatic);
+        seg.setSelectedSegmentBezelColor(Some(&theme::ns_color(theme::ACCENT)));
         seg.setSelectedSegment(0);
         seg.setFrame(rect(20.0, 14.0, 600.0, 28.0));
         seg.setAccessibilityLabel(Some(&ns("設定セクション")));
@@ -663,6 +664,10 @@ impl SettingsWindow {
 
     /// Show and bring to front (the app may temporarily activate itself for this window only).
     pub fn show(&mut self) {
+        // Accessory apps are never frontmost on their own; activate only for this window.
+        let mtm = MainThreadMarker::from(&*self.window);
+        objc2_app_kit::NSApplication::sharedApplication(mtm).activate();
+        self.window.center();
         self.window.makeKeyAndOrderFront(None);
     }
 
