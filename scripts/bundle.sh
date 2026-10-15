@@ -39,6 +39,9 @@ rm -rf "$APP" "$ZIP" "$ZIP.sha256"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/holdnote"
 cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# License notices shipped inside the app (regenerate with scripts/gen-third-party-licenses.py).
+cp LICENSE "$APP/Contents/Resources/LICENSE"
+cp THIRD_PARTY_LICENSES.txt "$APP/Contents/Resources/THIRD_PARTY_LICENSES.txt"
 sed "s/@VERSION@/$VERSION/g" packaging/Info.plist.in > "$APP/Contents/Info.plist"
 plutil -lint "$APP/Contents/Info.plist"
 
@@ -160,6 +163,19 @@ $(dirname "$real")"
     for rp in $(rpaths_of "$dst"); do
       install_name_tool -delete_rpath "$rp" "$dst" 2>/dev/null || true
     done
+  done
+
+  # License texts of the bundled native components (whisper.cpp / ggml: MIT, libomp: Apache-2.0 WITH LLVM-exception).
+  LIC="$APP/Contents/Resources/licenses"
+  mkdir -p "$LIC"
+  for pair in "whisper.cpp:$(cd "$SRC_DIR/.." && pwd -P)" "ggml:${BACKEND_DIR%/libexec}" \
+              "libomp:$(brew --prefix libomp 2>/dev/null || true)"; do
+    name="${pair%%:*}"; dir="${pair#*:}"
+    found=""
+    for f in "$dir"/LICENSE "$dir"/LICENSE.txt "$dir"/LICENSE.TXT "$dir"/LICENSE.md; do
+      if [ -f "$f" ]; then cp "$f" "$LIC/$name-LICENSE.txt"; found=1; break; fi
+    done
+    [ -n "$found" ] || echo "WARNING: license file for $name not found in $dir — add it to $LIC manually" >&2
   done
 
   # strip rpaths that point at the build machine

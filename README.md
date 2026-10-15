@@ -5,6 +5,19 @@
 - 要件定義：[requirements.md](requirements.md)（本実装は保存方式 B: Google Drive API 版）
 - セットアップと手動作業：[docs/README.md](docs/README.md)
 
+## インストール（利用者向け）
+
+Apple Silicon Mac（macOS 14 以降）、Homebrew が必要です。
+
+```bash
+brew install --cask kzmcode/tap/holdnote
+```
+
+- Apple の公証を受けていないため、初回起動時に **システム設定 → プライバシーとセキュリティ →「このまま開く」** で許可してください。
+- Google Drive への保存には Google Cloud の OAuth クライアントの準備が必要です（[docs/01-google-cloud-setup.md](docs/01-google-cloud-setup.md)）。
+
+## 開発
+
 ```bash
 make test      # 単体テスト
 make bundle    # dist/HoldNote.app を作成（アドホック署名）
@@ -24,3 +37,8 @@ make run-app   # 起動
 | `src/storage/` | OAuth（PKCE・ループバック・Picker）と Drive API v3 |
 | `src/security.rs` | Keychain へのトークン保存 |
 | `src/ui/` | Coral Night テーマ、録音オーバーレイ、設定・履歴ウィンドウ |
+
+## ライセンス
+
+[MIT License](LICENSE)。同梱しているサードパーティ製ソフトウェアのライセンスは [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt) と、
+アプリ内の `HoldNote.app/Contents/Resources/licenses/`（whisper.cpp・ggml・libomp）を参照してください。

@@ -6,7 +6,9 @@
 
 1. GitHub にアプリ本体のリポジトリ（例：`YOUR_ORG/holdnote`）と Tap リポジトリ **`YOUR_ORG/homebrew-tap`** を作成。
 2. `packaging/homebrew/holdnote.rb` を Tap リポジトリの `Casks/holdnote.rb` にコピー。
-3. `YOUR_ORG` を実際の組織名/ユーザー名に置換（cask の `url` / `homepage`）。
+3. `YOUR_ORG` の置き換えは 4-2 の `update-cask.sh --org <名前>` が行います。
+   リポジトリ内の雛形（`packaging/homebrew/`）と手順書は、他の人がフォークして使えるよう **仮名のまま** にしておきます。
+   実名にするのは Tap に置くコピーと README のインストール手順だけです。
 4. whisper-cli を同梱しない場合は cask の `depends_on formula: "whisper.cpp"` のコメントを外す。
 
 ## 4-2. リリースごと
@@ -15,10 +17,12 @@
 # 0. 依存ライブラリの脆弱性チェック（4-5 参照）。脆弱性が残っている状態ではリリースしない
 make audit
 # 1. Cargo.toml の version を更新
+#    依存ライブラリを変更した場合はライセンス一覧を再生成してコミット
+scripts/gen-third-party-licenses.py
 make bundle            # 同梱する場合は make bundle WHISPER=1
 # 2. GitHub Release v<version> を作り dist/HoldNote-<version>-arm64.zip を添付
 #    （SHA-256、変更履歴、ライセンス・依存ライブラリ一覧、対応 OS も記載）
-scripts/update-cask.sh path/to/homebrew-tap/Casks/holdnote.rb   # version と sha256 を書き換え
+scripts/update-cask.sh --org YOUR_ORG path/to/homebrew-tap/Casks/holdnote.rb   # version・sha256・YOUR_ORG を書き換え
 # 3. Tap リポジトリにコミット & push
 ```
 
@@ -75,3 +79,11 @@ RustSec の脆弱性データベースを取得し、`Cargo.lock` の全依存�
 
 - リリースノートに zip の SHA-256 を必ず記載する（アドホック署名のため、利用者が配布物の真正性を確認する手段になる）
 - Google Cloud Console で Drive API の割り当て上限を設定しておく（クライアント ID 流用時の被害を抑える。[01](01-google-cloud-setup.md) 参照）
+
+## 4-6. ライセンス表記
+
+- 本体：`LICENSE`（MIT）
+- Rust の依存クレート：`THIRD_PARTY_LICENSES.txt`（`scripts/gen-third-party-licenses.py` で生成。依存を変えたら再生成する）
+- whisper-cli を同梱した場合：`bundle.sh` が whisper.cpp・ggml（MIT）、libomp（Apache-2.0 WITH LLVM-exception）のライセンス本文を
+  `HoldNote.app/Contents/Resources/licenses/` にコピーする。`WARNING: license file ... not found` が出たら手動で追加すること
+- 依存のうち `option-ext`（`dirs` が使用）は MPL-2.0。改変せずに使っており、ソースの入手先を一覧に記載済み。改変する場合は改変部分のソース公開が必要になる
