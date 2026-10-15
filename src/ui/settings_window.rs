@@ -2,16 +2,16 @@
 //! Sends user actions as `AppEvent::Ui(UiAction)` through the sink; the app pushes fresh data via `refresh`.
 //! OWNER: settings-window agent.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 use chrono::{DateTime, Local, TimeZone};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{define_class, msg_send, sel, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly};
+use objc2::{define_class, msg_send, sel, AnyThread, ClassType, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSAccessibility, NSAlert, NSAlertStyle, NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSBackingStoreType, NSButton,
-    NSControlStateValueOn, NSControlTextEditingDelegate, NSFocusRingType, NSFont, NSForegroundColorAttributeName, NSImage, NSImageView,
+    NSControlStateValueOn, NSControlTextEditingDelegate, NSEvent, NSEventModifierFlags, NSResponder, NSFocusRingType, NSFont, NSForegroundColorAttributeName, NSImage, NSImageView,
     NSLineBreakMode, NSOpenPanel, NSPopUpButton, NSScrollView, NSSecureTextField, NSSegmentStyle,
     NSSegmentSwitchTracking, NSSegmentedControl, NSStepper, NSTextField, NSTextFieldDelegate, NSView, NSWindow,
     NSWindowDelegate, NSWindowStyleMask,
@@ -131,6 +131,214 @@ impl FlippedView {
     fn new(mtm: MainThreadMarker, frame: NSRect) -> Retained<Self> {
         let this = mtm.alloc::<Self>().set_ivars(());
         unsafe { msg_send![super(this), initWithFrame: frame] }
+    }
+}
+
+struct RecIvars {
+    sink: EventSink,
+    label: RefCell<Option<Retained<NSTextField>>>,
+    /// Current shortcut as shown when idle, e.g. "⌃⌥R".
+    current: RefCell<String>,
+    capturing: Cell<bool>,
+    /// Set by a click; the field only becomes first responder on explicit user action, never
+    /// automatically when the window opens (which would silently suspend the global hotkey).
+    armed: Cell<bool>,
+}
+
+define_class!(
+    /// Shortcut field: click it, then press the key combination to use. Esc cancels.
+    #[unsafe(super(NSView))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "HNShortcutRecorder"]
+    #[ivars = RecIvars]
+    struct ShortcutRecorder;
+
+    impl ShortcutRecorder {
+        #[unsafe(method(isFlipped))]
+        fn is_flipped(&self) -> bool {
+            true
+        }
+
+        #[unsafe(method(acceptsFirstResponder))]
+        fn accepts_first_responder(&self) -> bool {
+            self.ivars().armed.get()
+        }
+
+        #[unsafe(method(mouseDown:))]
+        fn mouse_down(&self, _event: &NSEvent) {
+            self.ivars().armed.set(true);
+            if let Some(w) = self.window() {
+                w.makeFirstResponder(Some(self.as_responder()));
+            }
+        }
+
+        #[unsafe(method(becomeFirstResponder))]
+        fn become_first_responder(&self) -> bool {
+            self.set_capturing(true);
+            true
+        }
+
+        #[unsafe(method(resignFirstResponder))]
+        fn resign_first_responder(&self) -> bool {
+            self.ivars().armed.set(false);
+            self.set_capturing(false);
+            true
+        }
+
+        #[unsafe(method(keyDown:))]
+        fn key_down(&self, event: &NSEvent) {
+            self.handle_key(event);
+        }
+
+        // ⌘-combinations arrive here instead of keyDown:.
+        #[unsafe(method(performKeyEquivalent:))]
+        fn perform_key_equivalent(&self, event: &NSEvent) -> bool {
+            let capturing = self.ivars().capturing.get();
+            if capturing {
+                self.handle_key(event);
+            }
+            capturing
+        }
+
+        #[unsafe(method(flagsChanged:))]
+        fn flags_changed(&self, event: &NSEvent) {
+            if self.ivars().capturing.get() {
+                let mods = modifier_symbols(event.modifierFlags());
+                if mods.is_empty() {
+                    self.show(CAPTURE_PROMPT, theme::TEXT_SECONDARY);
+                } else {
+                    self.show(&format!("{mods}…"), theme::TEXT_PRIMARY);
+                }
+            }
+        }
+    }
+);
+
+const CAPTURE_PROMPT: &str = "キーを押してください";
+
+fn modifier_symbols(flags: NSEventModifierFlags) -> String {
+    let mut s = String::new();
+    for (f, sym) in [
+        (NSEventModifierFlags::Control, "⌃"),
+        (NSEventModifierFlags::Option, "⌥"),
+        (NSEventModifierFlags::Shift, "⇧"),
+        (NSEventModifierFlags::Command, "⌘"),
+    ] {
+        if flags.contains(f) {
+            s.push_str(sym);
+        }
+    }
+    s
+}
+
+fn hotkey_mods(flags: NSEventModifierFlags) -> global_hotkey::hotkey::Modifiers {
+    use global_hotkey::hotkey::Modifiers;
+    let mut m = Modifiers::empty();
+    for (f, hm) in [
+        (NSEventModifierFlags::Control, Modifiers::CONTROL),
+        (NSEventModifierFlags::Option, Modifiers::ALT),
+        (NSEventModifierFlags::Shift, Modifiers::SHIFT),
+        (NSEventModifierFlags::Command, Modifiers::SUPER),
+    ] {
+        if flags.contains(f) {
+            m |= hm;
+        }
+    }
+    m
+}
+
+impl ShortcutRecorder {
+    fn new(mtm: MainThreadMarker, frame: NSRect, sink: EventSink) -> Retained<Self> {
+        let this = mtm.alloc::<Self>().set_ivars(RecIvars {
+            sink,
+            label: RefCell::new(None),
+            current: RefCell::new(String::new()),
+            capturing: Cell::new(false),
+            armed: Cell::new(false),
+        });
+        let view: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: frame] };
+        set_bg(&view, theme::BACKGROUND, Some(theme::BORDER), 6.0);
+        let l = label(
+            mtm,
+            &view,
+            "",
+            rect(12.0, (frame.size.height - 22.0) / 2.0, frame.size.width - 24.0, 22.0),
+            16.0,
+            true,
+            theme::TEXT_PRIMARY,
+            false,
+        );
+        *view.ivars().label.borrow_mut() = Some(l);
+        view.setAccessibilityElement(true);
+        view.setAccessibilityLabel(Some(&ns("録音ホットキー。クリックして新しいキーの組み合わせを押します")));
+        view
+    }
+
+    fn as_responder(&self) -> &NSResponder {
+        self.as_super().as_super()
+    }
+
+    fn show(&self, text: &str, color: Rgb) {
+        if let Some(l) = self.ivars().label.borrow().as_ref() {
+            set_text(l, text);
+            l.setTextColor(Some(&ns_color(color)));
+        }
+    }
+
+    /// Update the idle display (ignored while capturing).
+    fn set_current(&self, display: &str) {
+        *self.ivars().current.borrow_mut() = display.to_string();
+        if !self.ivars().capturing.get() {
+            self.show(display, theme::TEXT_PRIMARY);
+        }
+    }
+
+    fn set_capturing(&self, on: bool) {
+        if self.ivars().capturing.replace(on) == on {
+            return;
+        }
+        if let Some(layer) = self.layer() {
+            let c = if on { theme::ACCENT } else { theme::BORDER };
+            layer.setBorderColor(Some(&ns_color(c).CGColor()));
+        }
+        if on {
+            self.show(CAPTURE_PROMPT, theme::TEXT_SECONDARY);
+            (self.ivars().sink)(AppEvent::Ui(UiAction::HotkeyCaptureBegan));
+        } else {
+            let cur = self.ivars().current.borrow().clone();
+            self.show(&cur, theme::TEXT_PRIMARY);
+            (self.ivars().sink)(AppEvent::Ui(UiAction::HotkeyCaptureEnded));
+        }
+    }
+
+    fn finish(&self) {
+        if let Some(w) = self.window() {
+            w.makeFirstResponder(None);
+        }
+    }
+
+    fn handle_key(&self, event: &NSEvent) {
+        let flags = event.modifierFlags();
+        let mods = hotkey_mods(flags);
+        let keycode = event.keyCode();
+        const ESC: u16 = 53;
+        if keycode == ESC && mods.is_empty() {
+            self.finish();
+            return;
+        }
+        if mods.is_empty() {
+            self.show("⌃⌥⇧⌘ のいずれかと組み合わせてください", theme::WARNING);
+            return;
+        }
+        let Some(code) = crate::hotkey::code_from_mac_keycode(keycode) else {
+            self.show("このキーは使用できません", theme::WARNING);
+            return;
+        };
+        let spec = crate::hotkey::spec_from_parts(mods, code);
+        // Show the new combination right away; the app refreshes it (or an error) after registering.
+        *self.ivars().current.borrow_mut() = crate::hotkey::display_string(&spec);
+        (self.ivars().sink)(AppEvent::Ui(UiAction::SetHotkey(spec)));
+        self.finish();
     }
 }
 
@@ -300,7 +508,6 @@ fn set_enabled(b: &NSButton, enabled: bool) {
 enum Act {
     Do(UiAction),
     Confirm { message: String, info: String, ok: String, action: UiAction },
-    Hotkey,
     SaveClient,
     Retention,
     Launch,
@@ -309,7 +516,6 @@ enum Act {
 }
 
 struct Fields {
-    hotkey: Retained<NSTextField>,
     client_id: Retained<NSTextField>,
     secret: Retained<NSTextField>,
     stepper: Retained<NSStepper>,
@@ -427,15 +633,6 @@ impl Handler {
                     self.emit(action);
                 }
             }
-            Act::Hotkey => {
-                let spec = self.ivars().fields.borrow().as_ref().map(|f| f.hotkey.stringValue().to_string());
-                if let Some(s) = spec {
-                    let s = s.trim().to_string();
-                    if !s.is_empty() {
-                        self.emit(UiAction::SetHotkey(s));
-                    }
-                }
-            }
             Act::SaveClient => {
                 let v = self
                     .ivars()
@@ -482,7 +679,7 @@ impl Handler {
 }
 
 struct Widgets {
-    hotkey_display: Retained<NSTextField>,
+    hotkey_recorder: Retained<ShortcutRecorder>,
     hotkey_error: Retained<NSTextField>,
     mic: Retained<NSTextField>,
     launch: Retained<NSButton>,
@@ -577,12 +774,18 @@ impl SettingsWindow {
         label(mtm, &p_general, "保存方法: Google Drive API", rect(4.0, 0.0, 400.0, 18.0), 12.0, false, theme::TEXT_SECONDARY, false);
         let c = card(mtm, &p_general, 0.0, 26.0, PAGE_W, 190.0);
         title(mtm, &c, "録音ホットキー");
-        label(mtm, &c, "現在", rect(16.0, 44.0, 40.0, 18.0), 12.0, false, theme::TEXT_SECONDARY, false);
-        let hotkey_display = label(mtm, &c, "", rect(60.0, 44.0, 300.0, 18.0), 13.0, true, theme::TEXT_PRIMARY, false);
-        let hotkey = text_field(mtm, &c, rect(16.0, 70.0, 360.0, 24.0), false, "例: control+alt+KeyR");
-        // SAFETY: delegate is weak; `handler` is owned by SettingsWindow for the window's lifetime.
-        unsafe { hotkey.setDelegate(Some(ProtocolObject::from_ref(&*handler))) };
-        handler.button(&c, "変更", rect(386.0, 69.0, 70.0, 26.0), Style::Primary, Act::Hotkey);
+        let hotkey_recorder = ShortcutRecorder::new(mtm, rect(16.0, 44.0, 200.0, 40.0), handler.ivars().sink.clone());
+        c.addSubview(&hotkey_recorder);
+        label(
+            mtm,
+            &c,
+            "欄をクリックして、使いたいキーの組み合わせを押してください（Escでキャンセル）",
+            rect(228.0, 46.0, 360.0, 36.0),
+            12.0,
+            false,
+            theme::TEXT_SECONDARY,
+            true,
+        );
         let hotkey_error = label(mtm, &c, "", rect(16.0, 98.0, 568.0, 18.0), 12.0, false, theme::ERROR, false);
         let rec = handler.button(&c, "録音テスト", rect(16.0, 128.0, 110.0, 28.0), Style::Danger, Act::Do(UiAction::StartTestRecording));
         rec.setAccessibilityLabel(Some(&ns("録音テストを開始")));
@@ -710,14 +913,14 @@ impl SettingsWindow {
             Retained::into_super(p_model),
             Retained::into_super(p_hist),
         ];
-        *handler.ivars().fields.borrow_mut() = Some(Fields { hotkey, client_id, secret, stepper, popup });
+        *handler.ivars().fields.borrow_mut() = Some(Fields { client_id, secret, stepper, popup });
 
         SettingsWindow {
             mtm,
             window,
             handler,
             w: Widgets {
-                hotkey_display,
+                hotkey_recorder,
                 hotkey_error,
                 mic,
                 launch,
@@ -764,7 +967,7 @@ impl SettingsWindow {
     /// Re-render with new data. Must be cheap enough to call on every job change.
     pub fn refresh(&mut self, vm: &SettingsViewModel) {
         let w = &self.w;
-        set_text(&w.hotkey_display, &vm.hotkey_display);
+        w.hotkey_recorder.set_current(&vm.hotkey_display);
         set_text(&w.hotkey_error, vm.hotkey_error.as_deref().unwrap_or(""));
         set_text(&w.mic, &format!("マイク: {}", vm.mic_status));
         w.launch.setState(if vm.launch_at_login { 1 } else { 0 });
@@ -807,9 +1010,6 @@ impl SettingsWindow {
 
         // Editable fields: never overwrite while the user is typing.
         if let Some(f) = self.handler.ivars().fields.borrow().as_ref() {
-            if f.hotkey.currentEditor().is_none() {
-                set_text(&f.hotkey, &vm.hotkey_spec);
-            }
             if f.client_id.currentEditor().is_none() {
                 set_text(&f.client_id, &vm.google_client_id);
             }

@@ -55,6 +55,24 @@ impl HotkeyController {
         self.current
     }
 
+    /// Temporarily unregister the hotkey (while the settings window records a new shortcut,
+    /// so pressing the current combination doesn't start a recording).
+    pub fn suspend(&mut self) {
+        if let Some(hk) = self.current.take() {
+            if let Err(e) = self.manager.unregister(hk) {
+                log::warn!("failed to suspend hotkey: {e}");
+            }
+        }
+    }
+
+    /// Re-register `spec` if nothing is registered (counterpart of `suspend`).
+    pub fn resume(&mut self, spec: &str) -> Result<(), String> {
+        if self.current.is_none() {
+            self.register(spec)?;
+        }
+        Ok(())
+    }
+
     /// The id to compare against `GlobalHotKeyEvent::id`.
     pub fn current_id(&self) -> Option<u32> {
         self.current.map(|h| h.id())
@@ -149,6 +167,40 @@ pub fn mac_keycode(code: Code) -> Option<u16> {
     })
 }
 
+/// Every key `mac_keycode` knows, for the reverse lookup.
+const KNOWN_CODES: &[Code] = {
+    use Code::*;
+    &[
+        KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ, KeyK, KeyL, KeyM, KeyN, KeyO, KeyP, KeyQ,
+        KeyR, KeyS, KeyT, KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ, Digit0, Digit1, Digit2, Digit3, Digit4, Digit5,
+        Digit6, Digit7, Digit8, Digit9, Equal, Minus, BracketLeft, BracketRight, Quote, Semicolon, Backslash,
+        Comma, Slash, Period, Backquote, Enter, Tab, Space, Backspace, Escape, F1, F2, F3, F4, F5, F6, F7, F8,
+        F9, F10, F11, F12, ArrowLeft, ArrowRight, ArrowDown, ArrowUp,
+    ]
+};
+
+/// Physical key for a macOS virtual keycode (`NSEvent.keyCode`), if supported.
+pub fn code_from_mac_keycode(keycode: u16) -> Option<Code> {
+    KNOWN_CODES.iter().copied().find(|&c| mac_keycode(c) == Some(keycode))
+}
+
+/// Build a `HotKey::from_str` spec such as "control+alt+KeyR".
+pub fn spec_from_parts(mods: Modifiers, code: Code) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (m, name) in [
+        (Modifiers::CONTROL, "control"),
+        (Modifiers::ALT, "alt"),
+        (Modifiers::SHIFT, "shift"),
+        (Modifiers::SUPER, "super"),
+    ] {
+        if mods.contains(m) {
+            parts.push(name.into());
+        }
+    }
+    parts.push(code.to_string());
+    parts.join("+")
+}
+
 fn flags_for(mods: Modifiers) -> u64 {
     let mut f = 0;
     if mods.contains(Modifiers::SHIFT) {
@@ -236,6 +288,21 @@ pub fn display_string(spec: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keycode_reverse_lookup_and_spec_roundtrip() {
+        for &c in KNOWN_CODES {
+            let kc = mac_keycode(c).expect("known code has keycode");
+            assert_eq!(code_from_mac_keycode(kc), Some(c));
+        }
+        let spec = spec_from_parts(Modifiers::CONTROL | Modifiers::ALT, Code::KeyR);
+        assert_eq!(spec, "control+alt+KeyR");
+        let hk = HotKey::from_str(&spec).unwrap();
+        assert_eq!(hk, HotKey::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyR));
+        let hk = HotKey::from_str(&spec_from_parts(Modifiers::SUPER | Modifiers::SHIFT, Code::Digit1)).unwrap();
+        assert_eq!(hk, HotKey::new(Some(Modifiers::SUPER | Modifiers::SHIFT), Code::Digit1));
+        assert_eq!(code_from_mac_keycode(200), None);
+    }
 
     #[test]
     fn display_basic() {

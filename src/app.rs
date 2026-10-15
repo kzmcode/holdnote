@@ -857,6 +857,21 @@ impl App {
                     }
                 }
             }
+            UiAction::HotkeyCaptureBegan => {
+                if self.rec.is_none() {
+                    if let Some(hk) = self.hotkey.as_mut() {
+                        hk.suspend();
+                    }
+                }
+            }
+            UiAction::HotkeyCaptureEnded => {
+                let spec = self.settings.read().unwrap().hotkey.clone();
+                if let Some(hk) = self.hotkey.as_mut() {
+                    if let Err(e) = hk.resume(&spec) {
+                        self.hotkey_error = Some(e);
+                    }
+                }
+            }
             UiAction::SetModel(name) => {
                 if transcriber::model_info(&name).is_some() {
                     self.update_settings(|s| s.model = name);
@@ -947,6 +962,11 @@ impl App {
                 }
             }
             UiAction::WindowClosed => {
+                // The window may close while the shortcut field is still capturing.
+                let spec = self.settings.read().unwrap().hotkey.clone();
+                if let Some(hk) = self.hotkey.as_mut() {
+                    let _ = hk.resume(&spec);
+                }
                 let (done, configured, model) = {
                     let s = self.settings.read().unwrap();
                     (

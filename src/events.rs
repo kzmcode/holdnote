@@ -35,6 +35,10 @@ pub enum UiAction {
     SetGoogleClient { client_id: String, client_secret: String },
     /// New hotkey string (global_hotkey syntax). App validates/registers it and reports back.
     SetHotkey(String),
+    /// The shortcut field started/stopped listening for a new key combination.
+    /// The app suspends the global hotkey in between so the current combo can be re-entered.
+    HotkeyCaptureBegan,
+    HotkeyCaptureEnded,
     SetModel(String),
     DownloadModel,
     SetWhisperCliPath(Option<String>),
