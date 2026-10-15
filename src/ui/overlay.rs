@@ -10,7 +10,7 @@ use objc2_app_kit::{
     NSAccessibility, NSBackingStoreType, NSColor, NSEvent, NSFont, NSFontWeightMedium,
     NSFontWeightSemibold, NSImage, NSImageView, NSLineBreakMode, NSPanel, NSScreen,
     NSStatusWindowLevel, NSTextAlignment, NSTextField, NSView, NSWindowCollectionBehavior,
-    NSWindowStyleMask, NSWorkspace,
+    NSWindowStyleMask,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use objc2_quartz_core::{CALayer, CATransaction};
@@ -161,7 +161,7 @@ impl Overlay {
         panel.setFloatingPanel(true);
         panel.setBecomesKeyOnlyIfNeeded(true);
         panel.setOpaque(false);
-        panel.setHasShadow(true);
+        panel.setHasShadow(false);
         panel.setBackgroundColor(Some(&NSColor::clearColor()));
         panel.setCollectionBehavior(
             NSWindowCollectionBehavior::CanJoinAllSpaces
@@ -178,13 +178,11 @@ impl Overlay {
         pill.setBorderColor(Some(&cg(theme::BORDER, 1.0)));
         pill.setMasksToBounds(false);
 
-        // Ring (+ glow) behind the icon.
+        // Ring behind the icon (solid, no glow).
         let ring = CALayer::new();
         ring.setFrame(rect(RING_X, (H - RING) / 2.0, RING, RING));
         ring.setCornerRadius(RING / 2.0);
         ring.setBorderWidth(2.0);
-        ring.setShadowOffset(NSSize::new(0.0, 0.0));
-        ring.setShadowRadius(7.0);
         pill.addSublayer(&ring);
 
         let mut bars = Vec::new();
@@ -331,18 +329,13 @@ impl Overlay {
     fn apply_layout(&mut self) {
         let Some(look) = look(&self.state) else { return };
         let recording = matches!(self.state, OverlayState::Recording { .. });
-        let reduce_transparency =
-            NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceTransparency();
 
         CATransaction::begin();
         CATransaction::setDisableActions(true);
-        self.pill
-            .setBackgroundColor(Some(&cg(theme::SURFACE, if reduce_transparency { 1.0 } else { 0.96 })));
-        self.ring.setBackgroundColor(Some(&cg(look.ring, 0.16)));
+        // Always opaque and flat (also satisfies Reduce Transparency).
+        self.pill.setBackgroundColor(Some(&cg(theme::SURFACE, 1.0)));
+        self.ring.setBackgroundColor(Some(&cg(look.ring.mix(theme::SURFACE, 0.16), 1.0)));
         self.ring.setBorderColor(Some(&cg(look.ring, 1.0)));
-        // Weak static outer glow (no pulsing, so nothing to suppress under Reduce Motion).
-        self.ring.setShadowColor(Some(&cg(look.ring, 1.0)));
-        self.ring.setShadowOpacity(if recording { 0.55 } else { 0.0 });
         for b in &self.bars {
             b.setHidden(!recording);
         }

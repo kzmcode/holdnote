@@ -1,5 +1,6 @@
 //! Coral Night theme — the single source of truth for UI colors (requirements §4.2).
 //! Do not hard-code colors anywhere else.
+//! Design rule: flat, solid colors only — no gradients, blur, translucency, shadows or glow.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rgb(pub u8, pub u8, pub u8);
@@ -20,6 +21,12 @@ impl Rgb {
         };
         Rgb(f(self.0), f(self.1), f(self.2))
     }
+    /// Solid blend of `self` over `base` (t = share of `self`). Used instead of alpha so the UI
+    /// stays flat: no translucency, gradients, blur or glow.
+    pub fn mix(self, base: Rgb, t: f64) -> Self {
+        let f = |a: u8, b: u8| -> u8 { (a as f64 * t + b as f64 * (1.0 - t)).round().clamp(0.0, 255.0) as u8 };
+        Rgb(f(self.0, base.0), f(self.1, base.1), f(self.2, base.2))
+    }
     /// WCAG relative luminance.
     pub fn luminance(self) -> f64 {
         let lin = |c: u8| {
@@ -36,14 +43,14 @@ impl Rgb {
 }
 
 // Base 8 colors (fixed design values).
-pub const BACKGROUND: Rgb = Rgb::from_hex(0x0A1220);
-pub const SURFACE: Rgb = Rgb::from_hex(0x131D32);
+pub const BACKGROUND: Rgb = Rgb::from_hex(0x121212);
+pub const SURFACE: Rgb = Rgb::from_hex(0x1E1E1E);
 pub const TEXT_PRIMARY: Rgb = Rgb::from_hex(0xF4F7FF);
 pub const TEXT_SECONDARY: Rgb = Rgb::from_hex(0x9AA4B2);
 pub const ACCENT: Rgb = Rgb::from_hex(0x3B82F6);
 pub const RECORDING: Rgb = Rgb::from_hex(0xFF4D4D);
 pub const SUCCESS: Rgb = Rgb::from_hex(0x22C55E);
-pub const BORDER: Rgb = Rgb::from_hex(0x29344A);
+pub const BORDER: Rgb = Rgb::from_hex(0x333333);
 // Semantic additions.
 pub const WARNING: Rgb = Rgb::from_hex(0xF59E0B);
 pub const ERROR: Rgb = Rgb::from_hex(0xFF4D4D);
@@ -74,14 +81,14 @@ mod tests {
 
     #[test]
     fn base_tokens_match_spec() {
-        assert_eq!(BACKGROUND, Rgb(0x0A, 0x12, 0x20));
-        assert_eq!(SURFACE, Rgb(0x13, 0x1D, 0x32));
+        assert_eq!(BACKGROUND, Rgb(0x12, 0x12, 0x12));
+        assert_eq!(SURFACE, Rgb(0x1E, 0x1E, 0x1E));
         assert_eq!(TEXT_PRIMARY, Rgb(0xF4, 0xF7, 0xFF));
         assert_eq!(TEXT_SECONDARY, Rgb(0x9A, 0xA4, 0xB2));
         assert_eq!(ACCENT, Rgb(0x3B, 0x82, 0xF6));
         assert_eq!(RECORDING, Rgb(0xFF, 0x4D, 0x4D));
         assert_eq!(SUCCESS, Rgb(0x22, 0xC5, 0x5E));
-        assert_eq!(BORDER, Rgb(0x29, 0x34, 0x4A));
+        assert_eq!(BORDER, Rgb(0x33, 0x33, 0x33));
     }
 
     #[test]

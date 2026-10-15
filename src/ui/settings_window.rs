@@ -11,9 +11,9 @@ use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{define_class, msg_send, sel, AnyThread, DefinedClass, MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSAccessibility, NSAlert, NSAlertStyle, NSAppearance, NSAppearanceCustomization, NSAppearanceNameDarkAqua, NSBackingStoreType, NSButton,
-    NSControlStateValueOn, NSFont, NSForegroundColorAttributeName, NSImage, NSImageView,
+    NSControlStateValueOn, NSControlTextEditingDelegate, NSFocusRingType, NSFont, NSForegroundColorAttributeName, NSImage, NSImageView,
     NSLineBreakMode, NSOpenPanel, NSPopUpButton, NSScrollView, NSSecureTextField, NSSegmentStyle,
-    NSSegmentSwitchTracking, NSSegmentedControl, NSStepper, NSTextField, NSView, NSWindow,
+    NSSegmentSwitchTracking, NSSegmentedControl, NSStepper, NSTextField, NSTextFieldDelegate, NSView, NSWindow,
     NSWindowDelegate, NSWindowStyleMask,
 };
 use objc2_foundation::{
@@ -146,6 +146,15 @@ fn set_bg(view: &NSView, color: Rgb, border: Option<Rgb>, radius: f64) {
     }
 }
 
+fn set_field_border(n: &NSNotification, color: Rgb) {
+    let Some(obj) = n.object() else { return };
+    if let Some(view) = obj.downcast_ref::<NSView>() {
+        if let Some(layer) = view.layer() {
+            layer.setBorderColor(Some(&ns_color(color).CGColor()));
+        }
+    }
+}
+
 fn card(mtm: MainThreadMarker, parent: &NSView, x: f64, y: f64, w: f64, h: f64) -> Retained<FlippedView> {
     let v = FlippedView::new(mtm, rect(x, y, w, h));
     set_bg(&v, theme::SURFACE, Some(theme::BORDER), 12.0);
@@ -200,8 +209,14 @@ fn text_field(
     };
     f.setFont(Some(&NSFont::systemFontOfSize(13.0)));
     f.setTextColor(Some(&ns_color(theme::TEXT_PRIMARY)));
+    // Flat field: own 1pt border instead of the system bezel/focus ring (which uses the
+    // user's system accent color). Editing switches the border to ACCENT (see Handler).
+    f.setBezeled(false);
+    f.setBordered(false);
+    f.setFocusRingType(NSFocusRingType::None);
     f.setDrawsBackground(true);
     f.setBackgroundColor(Some(&ns_color(theme::BACKGROUND)));
+    set_bg(&f, theme::BACKGROUND, Some(theme::BORDER), 6.0);
     f.setPlaceholderString(Some(&ns(placeholder)));
     parent.addSubview(&f);
     f
@@ -276,6 +291,20 @@ define_class!(
     struct Handler;
 
     unsafe impl NSObjectProtocol for Handler {}
+
+    unsafe impl NSControlTextEditingDelegate for Handler {
+        #[unsafe(method(controlTextDidBeginEditing:))]
+        fn text_did_begin(&self, n: &NSNotification) {
+            set_field_border(n, theme::ACCENT);
+        }
+
+        #[unsafe(method(controlTextDidEndEditing:))]
+        fn text_did_end(&self, n: &NSNotification) {
+            set_field_border(n, theme::BORDER);
+        }
+    }
+
+    unsafe impl NSTextFieldDelegate for Handler {}
 
     unsafe impl NSWindowDelegate for Handler {
         #[unsafe(method(windowWillClose:))]
@@ -460,6 +489,8 @@ impl SettingsWindow {
         };
         unsafe { window.setReleasedWhenClosed(false) };
         window.setTitle(&ns("HoldNote 設定"));
+        // Flat title bar in the window background color (no system material).
+        window.setTitlebarAppearsTransparent(true);
         unsafe {
             if let Some(a) = NSAppearance::appearanceNamed(NSAppearanceNameDarkAqua) {
                 window.setAppearance(Some(&a));
@@ -508,6 +539,8 @@ impl SettingsWindow {
         label(mtm, &c, "現在", rect(16.0, 44.0, 40.0, 18.0), 12.0, false, theme::TEXT_SECONDARY, false);
         let hotkey_display = label(mtm, &c, "", rect(60.0, 44.0, 300.0, 18.0), 13.0, true, theme::TEXT_PRIMARY, false);
         let hotkey = text_field(mtm, &c, rect(16.0, 70.0, 360.0, 24.0), false, "例: control+alt+KeyR");
+        // SAFETY: delegate is weak; `handler` is owned by SettingsWindow for the window's lifetime.
+        unsafe { hotkey.setDelegate(Some(ProtocolObject::from_ref(&*handler))) };
         handler.button(&c, "変更", rect(386.0, 69.0, 70.0, 26.0), Style::Primary, Act::Hotkey);
         let hotkey_error = label(mtm, &c, "", rect(16.0, 98.0, 568.0, 18.0), 12.0, false, theme::ERROR, false);
         let rec = handler.button(&c, "録音テスト", rect(16.0, 128.0, 110.0, 28.0), Style::Danger, Act::Do(UiAction::StartTestRecording));
@@ -523,6 +556,7 @@ impl SettingsWindow {
         launch.setFrame(rect(16.0, 42.0, 300.0, 22.0));
         launch.setTag(handler.register(Act::Launch));
         launch.setAttributedTitle(&colored_title("ログイン時に起動", theme::TEXT_PRIMARY));
+        launch.setContentTintColor(Some(&ns_color(theme::ACCENT)));
         c.addSubview(&launch);
         label(mtm, &c, "音声ファイルの保持時間", rect(16.0, 78.0, 180.0, 18.0), 13.0, false, theme::TEXT_PRIMARY, false);
         let retention_label = label(mtm, &c, "", rect(200.0, 78.0, 90.0, 18.0), 13.0, true, theme::TEXT_PRIMARY, false);
@@ -561,8 +595,12 @@ impl SettingsWindow {
         title(mtm, &c, "Google OAuth クライアント");
         label(mtm, &c, "クライアントID", rect(16.0, 42.0, 120.0, 18.0), 12.0, false, theme::TEXT_PRIMARY, false);
         let client_id = text_field(mtm, &c, rect(16.0, 62.0, 568.0, 24.0), false, "xxxx.apps.googleusercontent.com");
+        // SAFETY: delegate is weak; `handler` is owned by SettingsWindow for the window's lifetime.
+        unsafe { client_id.setDelegate(Some(ProtocolObject::from_ref(&*handler))) };
         label(mtm, &c, "クライアントシークレット", rect(16.0, 94.0, 200.0, 18.0), 12.0, false, theme::TEXT_PRIMARY, false);
         let secret = text_field(mtm, &c, rect(16.0, 114.0, 568.0, 24.0), true, "");
+        // SAFETY: delegate is weak; `handler` is owned by SettingsWindow for the window's lifetime.
+        unsafe { secret.setDelegate(Some(ProtocolObject::from_ref(&*handler))) };
         handler.button(&c, "保存", rect(16.0, 148.0, 80.0, 28.0), Style::Primary, Act::SaveClient);
         label(mtm, &c, "シークレットはキーチェーンに保存されます。", rect(108.0, 153.0, 470.0, 18.0), 12.0, false, theme::TEXT_SECONDARY, false);
 
