@@ -9,8 +9,8 @@ cask "holdnote" do
   desc "Hold-to-record voice memo menu bar app with local transcription"
   homepage "https://github.com/YOUR_ORG/holdnote"
 
-  depends_on macos: ">= :sonoma"
   depends_on arch: :arm64
+  depends_on macos: :sonoma
 
   # Optional: install the whisper.cpp CLI via Homebrew instead of bundling it in the app.
   # Uncomment if the release zip does NOT include Contents/Resources/bin/whisper-cli.
