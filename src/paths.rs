@@ -32,6 +32,10 @@ pub fn markdown_dir() -> PathBuf {
 pub fn models_dir() -> PathBuf {
     sub("models")
 }
+/// Scratch files (whisper-cli output). Cleared on startup.
+pub fn tmp_dir() -> PathBuf {
+    sub("tmp")
+}
 pub fn logs_dir() -> PathBuf {
     sub("logs")
 }
@@ -45,10 +49,15 @@ pub fn settings_path() -> PathBuf {
 fn ensure_private_dir(dir: &std::path::Path) {
     if !dir.exists() {
         let _ = std::fs::create_dir_all(dir);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+    }
+    // Enforce owner-only access even if the directory already existed with looser permissions.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = std::fs::metadata(dir) {
+            if meta.permissions().mode() & 0o077 != 0 {
+                let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+            }
         }
     }
 }

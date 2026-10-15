@@ -277,7 +277,8 @@ pub fn transcribe(
     if !model.is_file() {
         return Err(TranscribeError::ModelMissing);
     }
-    let prefix = std::env::temp_dir().join(format!("holdnote-{}", uuid::Uuid::new_v4()));
+    // Write the transcript into the app's private (0700) data dir, not the shared temp dir.
+    let prefix = crate::paths::tmp_dir().join(format!("holdnote-{}", uuid::Uuid::new_v4()));
     let txt = PathBuf::from(format!("{}.txt", prefix.display()));
 
     let mut child = Command::new(cli)

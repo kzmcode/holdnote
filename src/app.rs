@@ -238,8 +238,12 @@ fn load_icon(tint: Option<crate::ui::theme::Rgb>) -> Option<Icon> {
 }
 
 fn open_url(url: &str) {
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        log::warn!("refusing to open non-http url");
+    // Only open Google Drive/Docs links (webViewLink); never arbitrary URLs or file:// paths.
+    let allowed = url::Url::parse(url).is_ok_and(|u| {
+        u.scheme() == "https" && matches!(u.host_str(), Some("drive.google.com" | "docs.google.com"))
+    });
+    if !allowed {
+        log::warn!("refusing to open non-Drive url");
         return;
     }
     let _ = std::process::Command::new("/usr/bin/open").arg(url).spawn();
@@ -262,6 +266,8 @@ impl App {
             return;
         }
         self.started = true;
+        // Leftover whisper output (may contain transcript text) from a previous crash.
+        clear_dir_contents(&paths::tmp_dir());
         self.google_connected = oauth::is_connected();
         self.build_tray();
 
