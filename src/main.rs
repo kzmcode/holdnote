@@ -34,10 +34,24 @@ fn main() {
         }
         _ => {}
     }
+    restrict_new_files();
     init_logging();
+    paths::tighten_existing_files();
     if let Err(e) = app::run() {
         log::error!("fatal: {e:#}");
         std::process::exit(1);
+    }
+}
+
+/// Files created from now on (settings, job DB, recordings, transcripts, logs) are owner-only.
+/// Called before any thread is spawned, since the umask is process-wide.
+fn restrict_new_files() {
+    extern "C" {
+        fn umask(mask: u16) -> u16; // mode_t is u16 on macOS
+    }
+    // SAFETY: umask only swaps the process file-creation mask and cannot fail.
+    unsafe {
+        umask(0o077);
     }
 }
 

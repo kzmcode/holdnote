@@ -102,7 +102,7 @@ fn support_dir() -> PathBuf {
 }
 
 fn macos_version() -> Option<String> {
-    let out = std::process::Command::new("sw_vers").arg("-productVersion").output().ok()?;
+    let out = std::process::Command::new("/usr/bin/sw_vers").arg("-productVersion").output().ok()?;
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
     (!s.is_empty()).then_some(s)
 }

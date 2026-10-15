@@ -46,6 +46,26 @@ pub fn settings_path() -> PathBuf {
     app_support_dir().join("settings.toml")
 }
 
+/// Make files and folders left by older versions (created 0644/0755) owner-only. Best effort.
+pub fn tighten_existing_files() {
+    #[cfg(unix)]
+    fn walk(dir: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let Ok(meta) = e.path().symlink_metadata() else { continue };
+            if meta.is_dir() {
+                ensure_private_dir(&e.path());
+                walk(&e.path());
+            } else if meta.is_file() && meta.permissions().mode() & 0o077 != 0 {
+                let _ = std::fs::set_permissions(e.path(), std::fs::Permissions::from_mode(0o600));
+            }
+        }
+    }
+    #[cfg(unix)]
+    walk(&app_support_dir());
+}
+
 fn ensure_private_dir(dir: &std::path::Path) {
     if !dir.exists() {
         let _ = std::fs::create_dir_all(dir);
