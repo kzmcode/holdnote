@@ -3,7 +3,8 @@
 ホットキーを押している間だけ録音し、ローカルの whisper.cpp で文字起こしして、Markdown を **Google Drive API** で指定フォルダに保存する macOS メニューバー常駐アプリ（Rust 製）。UI テーマは Coral Night。
 
 - 要件定義：[requirements.md](requirements.md)（本実装は保存方式 B: Google Drive API 版）
-- セットアップと手動作業：[docs/README.md](docs/README.md)
+- **使い方：[ユーザーマニュアル](docs/user-manual.md)**
+- 開発・配布：[docs/README.md](docs/README.md)
 
 ## インストール（利用者向け）
 
@@ -14,7 +15,7 @@ brew install --cask kzmcode/tap/holdnote
 ```
 
 - Apple の公証を受けていないため、初回起動時に **システム設定 → プライバシーとセキュリティ →「このまま開く」** で許可してください。
-- Google Drive への保存には Google Cloud の OAuth クライアントの準備が必要です（[docs/01-google-cloud-setup.md](docs/01-google-cloud-setup.md)）。
+- Google Drive への保存には Google Cloud の OAuth クライアントの準備が必要です（[Google Cloud の準備](docs/google-cloud-setup.md)）。
 
 ## 開発
 

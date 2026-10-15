@@ -1,7 +1,10 @@
-# 5. 実機検証チェックリスト
+# 実機検証チェックリスト
 
-単体テスト（`make test`）は通過済みですが、以下はハードウェア・OS・Google 実サービスが必要なため **未検証** です。
+単体テスト（`make test`）と配布物の自動チェック（`make verify`）では確認できない、実機・実サービスが必要な項目です。
 結果に応じて該当モジュールを調整してください。
+
+> 次の項目は自動化済みのため、このリストから外しています：署名・entitlement・Info.plist、同梱ライブラリの参照先、ライセンスファイル、whisper-cli の起動とフラグ（`make verify --transcribe`）。
+> 利用環境の状態は `holdnote --doctor` で確認できます。
 
 ## 録音・ホットキー（`src/hotkey.rs`, `src/recorder.rs`, `src/app.rs`）
 
@@ -37,7 +40,6 @@
 ## 文字起こし（`src/transcriber.rs`）
 
 - [ ] 10 秒・1 分の日本語音声で空でない `.md` が生成される（AT-06）
-- [ ] `whisper-cli` のフラグが導入バージョンで有効（[02](02-whisper-setup.md#2-4-要確認)）
 - [ ] base / small の速度比較（NFR-06）
 
 ## Google Drive API（`src/storage/`）
@@ -58,6 +60,6 @@
 
 ## 配布
 
-- [ ] 別 Mac で Homebrew 導入 → Gatekeeper 許可 → 利用可能（AT-18）
+- [ ] **Homebrew の入っていない** 別の Mac で `brew` 導入 → Gatekeeper 許可 → マイク許可 → 録音・文字起こし・保存できる（AT-18。同梱 whisper-cli の最終確認を兼ねる）
 - [ ] `brew upgrade --cask` 後に設定・履歴維持（AT-19）
 - [ ] Finder のアイコンが外側透明、メニューバー アイコンがライト/ダーク双方で判別可能（AT-25）
