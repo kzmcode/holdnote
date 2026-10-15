@@ -21,10 +21,19 @@ make bundle WHISPER=1          # = scripts/bundle.sh --bundle-whisper
 WHISPER_CLI=/path/to/whisper-cli scripts/bundle.sh
 ```
 
-`HoldNote.app/Contents/Resources/bin/whisper-cli` と依存 dylib（`Contents/Frameworks/`）がコピーされ、再署名されます。
-**同梱は実際の whisper.cpp ではまだ未検証** です。次を確認してください：
+`HoldNote.app/Contents/Resources/bin/whisper-cli` と依存 dylib（`Contents/Frameworks/`）、
+ggml の計算バックエンド（`libggml-cpu-*.so` / `libggml-metal.so` / `libggml-blas.so`、`Contents/Resources/bin/`）がコピーされ、再署名されます。
 
-- `otool -L dist/HoldNote.app/Contents/Resources/bin/whisper-cli` で Homebrew のパス（`/opt/homebrew/...`）が残っていないこと
+- ggml は計算バックエンドを実行時に読み込みます。読み込み先は、ビルド時に決まったパス（例：`/opt/homebrew/Cellar/ggml/0.26.0/libexec`）か、実行ファイルと同じフォルダです。
+  そのため、バックエンドを同梱しないと Homebrew のない Mac では動かず、`brew upgrade` でパスが変わると動かなくなります（2026-10-15 に修正済み）。
+- Homebrew 以外のバックエンドを使う場合は、`GGML_BACKEND_DIR=/path/to/libexec` を指定して `bundle.sh` を実行します。
+- **方式1と方式2を両方実行しても問題ありません。** 同梱版が優先されます（2-2 の検出順）。
+  なお、Homebrew 版も入っている Mac では、Homebrew 側のバックエンドも併せて読み込まれます。動作に支障はありません（2026-10-15 に確認）。
+
+同梱後は次を確認してください：
+
+- `otool -L dist/HoldNote.app/Contents/Resources/bin/whisper-cli dist/HoldNote.app/Contents/Resources/bin/*.so` で Homebrew のパス（`/opt/homebrew/...`）が残っていないこと
+- **Homebrew の入っていない Mac** で文字起こしできること（最終確認。未実施）
 - 同梱版で Metal が有効に動くこと、macOS 14 で起動すること
 - whisper.cpp / ggml は MIT ライセンス。配布物にライセンス表記を含めること
 

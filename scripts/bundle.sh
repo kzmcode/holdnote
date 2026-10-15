@@ -119,6 +119,49 @@ $(dirname "$real")"
       fi
     done < <(otool -L "$orig" | tail -n +2 | awk '{print $1}')
   done
+  # ggml loads its compute backends (CPU variants, Metal, BLAS) at runtime with dlopen from a
+  # build-time path (e.g. /opt/homebrew/Cellar/ggml/<ver>/libexec) or the executable's own dir.
+  # Copy them next to whisper-cli so the bundle works without Homebrew and survives `brew upgrade`.
+  BACKEND_DIR="${GGML_BACKEND_DIR:-}"
+  if [ -z "$BACKEND_DIR" ] && command -v brew >/dev/null 2>&1; then
+    BACKEND_DIR="$(brew --prefix ggml 2>/dev/null)/libexec"
+  fi
+  BACKENDS=()
+  if [ -d "$BACKEND_DIR" ]; then
+    for so in "$BACKEND_DIR"/libggml-*.so; do [ -e "$so" ] && BACKENDS+=("$so"); done
+  fi
+  if [ ${#BACKENDS[@]} -eq 0 ]; then
+    echo "WARNING: no ggml backend libraries found (set GGML_BACKEND_DIR); bundled whisper-cli may not run on other Macs" >&2
+  fi
+  for so in "${BACKENDS[@]}"; do
+    base="$(basename "$so")"
+    dst="$APP/Contents/Resources/bin/$base"
+    cp -L "$so" "$dst"; chmod u+w "$dst"
+    install_name_tool -id "@loader_path/$base" "$dst"
+    while IFS= read -r dep; do
+      is_system "$dep" && continue
+      dbase="$(basename "$dep")"
+      [ "$dbase" = "$base" ] && continue
+      if [ ! -e "$FW/$dbase" ]; then
+        real="$(resolve_dep "$dep" || true)"
+        if [ -z "$real" ] && [ -e "$(dirname "$so")/../lib/$dbase" ]; then
+          real="$(dirname "$so")/../lib/$dbase"
+        fi
+        if [ -n "$real" ]; then
+          cp -L "$real" "$FW/$dbase"; chmod u+w "$FW/$dbase"
+          install_name_tool -id "@loader_path/$dbase" "$FW/$dbase"
+        else
+          echo "WARNING: cannot resolve $dep (needed by $base)" >&2
+          continue
+        fi
+      fi
+      install_name_tool -change "$dep" "@loader_path/../../Frameworks/$dbase" "$dst"
+    done < <(otool -L "$so" | tail -n +2 | awk '{print $1}')
+    for rp in $(rpaths_of "$dst"); do
+      install_name_tool -delete_rpath "$rp" "$dst" 2>/dev/null || true
+    done
+  done
+
   # strip rpaths that point at the build machine
   for f in "$CLI" "$FW"/*; do
     [ -f "$f" ] || continue
@@ -133,6 +176,9 @@ rmdir "$APP/Contents/Frameworks" 2>/dev/null || true
 echo "==> codesign (ad-hoc)"
 if [ -d "$APP/Contents/Frameworks" ]; then
   for f in "$APP"/Contents/Frameworks/*; do [ -f "$f" ] && codesign --force -s - "$f"; done
+fi
+if [ -d "$APP/Contents/Resources/bin" ]; then
+  for f in "$APP"/Contents/Resources/bin/*.so; do [ -f "$f" ] && codesign --force -s - "$f"; done
 fi
 if [ -f "$APP/Contents/Resources/bin/whisper-cli" ]; then
   codesign --force -s - "$APP/Contents/Resources/bin/whisper-cli"
