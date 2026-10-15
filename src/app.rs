@@ -75,6 +75,8 @@ struct TrayParts {
     // Kept alive for the lifetime of the app.
     tray: TrayIcon,
     items: MenuItems,
+    /// Whether the colored recording icon is currently shown.
+    recording_icon: bool,
 }
 
 struct App {
@@ -213,10 +215,19 @@ fn install_sleep_observers(
     out
 }
 
-fn load_icon() -> Option<Icon> {
+/// Menu bar icon. `tint` None → template (black, macOS adapts it to light/dark);
+/// Some(color) → the silhouette filled with that solid color (used while recording).
+fn load_icon(tint: Option<crate::ui::theme::Rgb>) -> Option<Icon> {
     for bytes in [ICON_2X, ICON_1X] {
         if let Ok(img) = image::load_from_memory(bytes) {
-            let rgba = img.to_rgba8();
+            let mut rgba = img.to_rgba8();
+            if let Some(c) = tint {
+                for px in rgba.pixels_mut() {
+                    px.0[0] = c.0;
+                    px.0[1] = c.1;
+                    px.0[2] = c.2;
+                }
+            }
             let (w, h) = rgba.dimensions();
             if let Ok(icon) = Icon::from_rgba(rgba.into_raw(), w, h) {
                 return Some(icon);
@@ -982,12 +993,13 @@ impl App {
         let mut b = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_tooltip("HoldNote");
-        if let Some(icon) = load_icon() {
+        if let Some(icon) = load_icon(None) {
             b = b.with_icon_templated(icon);
         }
         match b.build() {
             Ok(tray) => {
                 self.tray = Some(TrayParts {
+                    recording_icon: false,
                     tray,
                     items: MenuItems { status, toggle, open_last, pending, history, retry_all, settings, about, quit },
                 })
@@ -1031,7 +1043,18 @@ impl App {
         let has_link = matches!(self.store.last_saved(), Ok(Some(j)) if j.remote_web_link.is_some());
         let recording = self.rec.is_some();
 
-        let t = self.tray.as_ref().unwrap();
+        let t = self.tray.as_mut().unwrap();
+        if t.recording_icon != recording {
+            let r = if recording {
+                t.tray.set_icon_with_as_template(load_icon(Some(crate::ui::theme::RECORDING)), false)
+            } else {
+                t.tray.set_icon_templated(load_icon(None))
+            };
+            if let Err(e) = r {
+                log::warn!("tray icon: {e}");
+            }
+            t.recording_icon = recording;
+        }
         t.items.status.set_text(label);
         t.items.toggle.set_text(if recording { "録音停止" } else { "録音開始" });
         t.items.pending.set_text(format!("未保存: {unsaved}件"));
