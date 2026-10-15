@@ -1,6 +1,7 @@
 //! HoldNote — hold-to-record voice memo for macOS, saved to Google Drive via the Drive API.
 
 mod app;
+mod doctor;
 mod events;
 mod hotkey;
 mod install;
@@ -17,6 +18,22 @@ mod ui;
 mod worker;
 
 fn main() {
+    // CLI flags that must not start the GUI (and must not touch the filesystem).
+    match std::env::args().nth(1).as_deref() {
+        Some("--doctor") => return doctor::run(),
+        Some("--version") | Some("-V") => {
+            println!("HoldNote {}", env!("CARGO_PKG_VERSION"));
+            return;
+        }
+        Some("--help") | Some("-h") => {
+            println!(
+                "HoldNote {}\n\nUSAGE:\n  holdnote [OPTION]\n\nOPTIONS:\n  --doctor        診断レポートを表示して終了\n  --version       バージョンを表示\n  --overlay-demo  オーバーレイ表示のデモ（開発用）\n  --help          このヘルプを表示",
+                env!("CARGO_PKG_VERSION")
+            );
+            return;
+        }
+        _ => {}
+    }
     init_logging();
     if let Err(e) = app::run() {
         log::error!("fatal: {e:#}");
