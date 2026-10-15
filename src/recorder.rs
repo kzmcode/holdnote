@@ -352,6 +352,12 @@ pub fn rms_to_level(rms: f32) -> f32 {
 #[link(name = "AVFoundation", kind = "framework")]
 extern "C" {}
 
+/// Name of macOS's current default input device (the one recordings use), e.g. "MacBook Proのマイク".
+pub fn default_input_name() -> Option<String> {
+    let device = cpal::default_host().default_input_device()?;
+    device.description().ok().map(|d| d.name().to_string())
+}
+
 /// Microphone TCC authorization (AVCaptureDevice authorizationStatusForMediaType:audio).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MicPermission {
@@ -511,5 +517,27 @@ mod tests {
         assert!((rms_to_level(1.0) - 1.0).abs() < 1e-6);
         assert!(rms_to_level(0.001) < 1e-3);
         assert!(rms_to_level(0.1) > 0.6 && rms_to_level(0.1) < 0.7);
+    }
+}
+
+#[cfg(test)]
+mod live_tests {
+    use super::*;
+
+    /// Manual check against the real microphone: `cargo test live_mic -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn live_mic() {
+        let sink: EventSink = std::sync::Arc::new(|e| eprintln!("event: {e:?}"));
+        let mut r = Recorder::new(sink);
+        eprintln!("permission: {:?}", mic_permission());
+        let path = std::env::temp_dir().join("holdnote-live-mic.wav");
+        r.start(&path).expect("start");
+        for _ in 0..20 {
+            std::thread::sleep(Duration::from_millis(100));
+            eprint!("{:.2} ", r.level());
+        }
+        let res = r.stop().expect("stop");
+        eprintln!("\nduration={:?} peak={:.4} rms={:.4} path={}", res.duration, res.peak, res.rms, res.path.display());
     }
 }

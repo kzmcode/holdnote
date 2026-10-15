@@ -28,9 +28,17 @@ make run-app       # バンドルして起動
 5. 「音声認識」タブ：モデルをダウンロード（[02-whisper-setup.md](02-whisper-setup.md)）。
 6. 任意のアプリ使用中に **`⌃⌥R`（Control + Option + R）を押している間** 録音されます。離すと文字起こし → Drive に保存されます。
 
+### 録音デバイスについて
+
+HoldNote は **macOS の既定の入力デバイス** で録音します（アプリ内でのマイク選択は未対応）。
+BlackHole などの仮想オーディオデバイスが既定の入力になっていると、無音で録音され「音声が入力されていません」と表示されます。
+**システム設定 → サウンド → 入力** で使いたいマイク（例：MacBook Pro のマイク）を選んでください。
+現在の入力デバイスは、設定画面「一般」タブのマイク欄に表示されます。
+
 ### 権限について
 
-- ホットキーは Carbon のグローバルホットキーとキー状態の照会で実装しており、**入力監視・アクセシビリティ権限は不要** です。
+- ホットキーは Carbon のグローバルホットキーで実装しており、**入力監視・アクセシビリティ権限は不要** です。
+  入力監視が許可されていない場合、キーの押下状態を確認する安全装置（修飾キーを先に離したときの停止）は自動的に無効になり、キーを離したときの通知で録音を止めます。
 - 通知は `osascript` 経由で出すため、通知が出ない場合は **システム設定 → 通知** で「スクリプトエディタ」の通知を許可してください。
 - アドホック署名はビルドごとに変わるため、**アップデート後にマイク権限を再度求められることがあります**。
 
@@ -49,6 +57,7 @@ make run-app       # バンドルして起動
 | 録音 WAV | `~/Library/Application Support/HoldNote/audio/`（保存成功後、既定 24 時間で削除） |
 | 生成 Markdown | `~/Library/Application Support/HoldNote/queue/` |
 | モデル | `~/Library/Application Support/HoldNote/models/` |
+| ログ | `~/Library/Application Support/HoldNote/logs/holdnote.log`（1MB でローテーション。文字起こし本文・トークンは記録しない） |
 | OAuth トークン | macOS Keychain（`io.github.holdnote.HoldNote` / `google-oauth`） |
 
 ## 3-6. 開発用オプション

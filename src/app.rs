@@ -57,6 +57,10 @@ struct ActiveRecording {
     /// Started from the tray menu (no hotkey failsafe).
     manual: bool,
     missed_held_polls: u32,
+    /// The key-state query reported the hotkey as held at least once. Without Input Monitoring
+    /// permission macOS answers "not pressed" for every key, so the failsafe only trusts the
+    /// query after it has proven to work during this recording.
+    seen_held: bool,
 }
 
 struct MenuItems {
@@ -364,6 +368,7 @@ impl App {
         if !is_ours {
             return;
         }
+        log::info!("hotkey {:?}", e.state);
         match e.state {
             HotKeyState::Pressed => {
                 // REC-03: ignore autorepeat / double press.
@@ -574,7 +579,7 @@ impl App {
             self.recording_start_failed(&e);
             return;
         }
-        self.rec = Some(ActiveRecording { job_id, started: Instant::now(), manual, missed_held_polls: 0 });
+        self.rec = Some(ActiveRecording { job_id, started: Instant::now(), manual, missed_held_polls: 0, seen_held: false });
         self.next_poll = Instant::now() + POLL_INTERVAL;
         self.overlay.set_state(OverlayState::Recording { elapsed: Duration::ZERO, level: 0.0 });
         self.refresh_tray();
@@ -610,10 +615,14 @@ impl App {
             // REC-04: failsafe if the Released event was lost or modifiers were released first.
             let held = self.hotkey.as_ref().and_then(|h| h.current()).map(|hk| hotkey::is_physically_held(&hk));
             match held {
-                Some(false) => rec.missed_held_polls += 1,
+                Some(true) => {
+                    rec.seen_held = true;
+                    rec.missed_held_polls = 0;
+                }
+                Some(false) if rec.seen_held => rec.missed_held_polls += 1,
                 _ => rec.missed_held_polls = 0,
             }
-            if rec.missed_held_polls >= 2 {
+            if rec.seen_held && rec.missed_held_polls >= 2 {
                 log::info!("hotkey no longer held: stopping recording (failsafe)");
                 self.hotkey_down = false;
                 self.stop_recording();
@@ -622,6 +631,9 @@ impl App {
     }
 
     fn stop_recording(&mut self) {
+        if let Some(r) = &self.rec {
+            log::info!("recording stopped after {} ms (manual={})", r.started.elapsed().as_millis(), r.manual);
+        }
         let Some(rec) = self.rec.take() else { return };
         let res = self.recorder.stop();
         self.finalize_recording(&rec.job_id, res);
@@ -647,6 +659,15 @@ impl App {
                 let min = Duration::from_millis(self.settings.read().unwrap().min_recording_ms as u64);
                 if r.duration < min {
                     discard(self, job, &r.path, "録音が短すぎるため破棄しました");
+                } else if r.peak == 0.0 {
+                    // Digital silence: no real microphone delivers exact zeros, so the input is a
+                    // virtual device (e.g. BlackHole) or access is blocked. Tell the user which one.
+                    let input = crate::recorder::default_input_name().unwrap_or_else(|| "不明".into());
+                    log::warn!("recording was digitally silent (input device: {input})");
+                    discard(self, job, &r.path, "");
+                    let msg = format!("音声が入力されていません（入力: {input}）");
+                    self.overlay.set_state(OverlayState::ActionRequired(msg.clone()));
+                    notify("HoldNote", &format!("{msg}。システム設定 > サウンド > 入力 でマイクを選んでください。"));
                 } else if r.peak < SILENCE_PEAK {
                     discard(self, job, &r.path, "無音のため破棄しました");
                 } else {
@@ -744,16 +765,21 @@ impl App {
                 ModelStatus::Corrupt => "破損しています（再ダウンロードしてください）".to_string(),
             }
         };
-        let mic_status = match crate::recorder::mic_permission() {
+        let permission = match crate::recorder::mic_permission() {
             MicPermission::Granted => "許可済み",
             MicPermission::Denied => "拒否されています（システム設定 > プライバシーとセキュリティ > マイク）",
             MicPermission::NotDetermined => "未確認（最初の録音時に許可を求めます）",
+        };
+        // Recordings use macOS's default input; show it so a virtual device (e.g. BlackHole) is obvious.
+        let mic_status = match crate::recorder::default_input_name() {
+            Some(name) => format!("{permission} ／ 入力: {name}（システム設定 > サウンド > 入力 で変更）"),
+            None => format!("{permission} ／ 入力デバイスがありません"),
         };
         SettingsViewModel {
             hotkey_display: hotkey::display_string(&s.hotkey),
             hotkey_spec: s.hotkey.clone(),
             hotkey_error: self.hotkey_error.clone(),
-            mic_status: mic_status.into(),
+            mic_status,
             model: s.model.clone(),
             model_status,
             whisper_cli: transcriber::find_whisper_cli(s.whisper_cli_path.as_deref())
