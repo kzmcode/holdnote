@@ -1,0 +1,38 @@
+## 変更点
+
+{{CHANGES}}
+
+## インストール
+
+```bash
+brew install --cask kzmcode/tap/holdnote
+```
+
+アップグレードは `brew upgrade --cask kzmcode/tap/holdnote` です。
+
+または `HoldNote-{{VERSION}}-arm64.zip` をダウンロードして展開し、`HoldNote.app` を「アプリケーション」フォルダに置いてください。
+
+## 動作環境
+
+- Apple Silicon Mac（arm64）、macOS 14 以降
+- whisper-cli（whisper.cpp）を同梱しているため、Homebrew の whisper.cpp は不要です
+- 音声認識モデル（base / small）は、初回にアプリの設定画面からダウンロードします
+- Google Drive への保存には、Google Cloud の OAuth クライアントの準備が必要です（使い方は [ユーザーマニュアル](https://github.com/{{REPO}}/blob/main/docs/user-manual.md) を参照）
+
+## 初回起動時の注意
+
+Apple の公証を受けていない（アドホック署名）ため、初回は Gatekeeper にブロックされます。
+**システム設定 → プライバシーとセキュリティ →「このまま開く」** で許可してください。
+アップデート後は、マイクの許可を再度求められることがあります。
+
+## SHA-256
+
+```
+{{SHA256}}  HoldNote-{{VERSION}}-arm64.zip
+```
+
+ダウンロードしたファイルは `shasum -a 256 HoldNote-{{VERSION}}-arm64.zip` で照合できます。
+
+## ライセンス
+
+MIT License。同梱ソフトウェア（Rust クレート、whisper.cpp・ggml〔MIT〕、libomp〔Apache-2.0 WITH LLVM-exception〕）のライセンスは [THIRD_PARTY_LICENSES.txt](https://github.com/{{REPO}}/blob/main/THIRD_PARTY_LICENSES.txt) と、アプリ内の `Contents/Resources/licenses/` を参照してください。
