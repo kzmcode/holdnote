@@ -222,6 +222,47 @@ fn text_field(
     f
 }
 
+/// Accessory apps have no visible menu bar, but ⌘X/⌘C/⌘V/⌘A/⌘Z are still dispatched through the
+/// main menu's key equivalents. Without an Edit menu, copy & paste in text fields does nothing.
+fn install_edit_menu(mtm: MainThreadMarker) {
+    use objc2_app_kit::{NSEventModifierFlags, NSMenu, NSMenuItem};
+    let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
+    let main = app.mainMenu().unwrap_or_else(|| {
+        let m = NSMenu::initWithTitle(mtm.alloc(), &ns(""));
+        // First top-level item is always treated as the application menu.
+        let app_item = NSMenuItem::new(mtm);
+        app_item.setSubmenu(Some(&NSMenu::initWithTitle(mtm.alloc(), &ns("HoldNote"))));
+        m.addItem(&app_item);
+        app.setMainMenu(Some(&m));
+        m
+    });
+    if main.itemWithTitle(&ns("編集")).is_some() {
+        return;
+    }
+    let edit = NSMenu::initWithTitle(mtm.alloc(), &ns("編集"));
+    let items: [(&str, objc2::runtime::Sel, &str, bool); 6] = [
+        ("取り消す", sel!(undo:), "z", false),
+        ("やり直す", sel!(redo:), "z", true),
+        ("カット", sel!(cut:), "x", false),
+        ("コピー", sel!(copy:), "c", false),
+        ("ペースト", sel!(paste:), "v", false),
+        ("すべてを選択", sel!(selectAll:), "a", false),
+    ];
+    for (title, action, key, shift) in items {
+        // SAFETY: standard responder-chain selectors; target nil = first responder.
+        let item = unsafe { edit.addItemWithTitle_action_keyEquivalent(&ns(title), Some(action), &ns(key)) };
+        let mut mask = NSEventModifierFlags::Command;
+        if shift {
+            mask |= NSEventModifierFlags::Shift;
+        }
+        item.setKeyEquivalentModifierMask(mask);
+    }
+    let edit_item = NSMenuItem::new(mtm);
+    edit_item.setTitle(&ns("編集"));
+    edit_item.setSubmenu(Some(&edit));
+    main.addItem(&edit_item);
+}
+
 fn colored_title(text: &str, color: Rgb) -> Retained<NSAttributedString> {
     unsafe {
         let key: &NSString = NSForegroundColorAttributeName;
@@ -704,8 +745,15 @@ impl SettingsWindow {
     pub fn show(&mut self) {
         // Accessory apps are never frontmost on their own; activate only for this window.
         let mtm = MainThreadMarker::from(&*self.window);
-        objc2_app_kit::NSApplication::sharedApplication(mtm).activate();
-        self.window.center();
+        let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
+        // `activate()` is only a cooperative request on macOS 14+ and is ignored while another app
+        // is frontmost, which left keystrokes going to that app. Force activation for this window.
+        #[allow(deprecated)]
+        app.activateIgnoringOtherApps(true);
+        install_edit_menu(mtm);
+        if !self.window.isVisible() {
+            self.window.center();
+        }
         self.window.makeKeyAndOrderFront(None);
     }
 
