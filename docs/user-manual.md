@@ -304,7 +304,7 @@ brew uninstall --zap --cask kzmcode/tap/holdnote  # 設定・履歴・録音も�
 
 ### まず診断コマンドを実行する
 
-ターミナルで次を実行すると、マイク・音声認識・Google Drive の設定をまとめてチェックできます。
+ターミナルで次を実行すると、マイク・音声認識・Google Drive の設定をまとめてチェックできます（v0.1.1 以降）。
 
 ```bash
 /Applications/HoldNote.app/Contents/MacOS/holdnote --doctor
