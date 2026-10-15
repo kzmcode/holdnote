@@ -1,10 +1,14 @@
-.PHONY: build test assets bundle run-app clean
+.PHONY: build test audit assets bundle run-app clean
 
 build:
 	cargo build --release
 
 test:
 	cargo test
+
+# Dependency vulnerability scan (install once: cargo install cargo-audit --locked)
+audit:
+	cargo audit
 
 # Regenerates icon PNGs, menu bar template icons and AppIcon.icns
 assets:
