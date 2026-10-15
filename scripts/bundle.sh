@@ -25,6 +25,9 @@ APP="$DIST/HoldNote.app"
 ZIP="$DIST/HoldNote-$VERSION-arm64.zip"
 
 echo "==> cargo build --release (arm64)"
+# Don't embed the builder's home directory (user name) in panic/debug paths of the shipped binary.
+CARGO_HOME_DIR="${CARGO_HOME:-$HOME/.cargo}"
+export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$CARGO_HOME_DIR=/cargo --remap-path-prefix=$ROOT=/holdnote --remap-path-prefix=$HOME=/home"
 if [ "$(uname -m)" = arm64 ]; then
   cargo build --release --bin holdnote
   BIN="$ROOT/target/release/holdnote"
