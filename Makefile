@@ -1,4 +1,4 @@
-.PHONY: build test audit assets bundle run-app clean verify release
+.PHONY: build test audit assets bundle run-app clean verify release docs-check
 
 build:
 	cargo build --release
@@ -35,3 +35,7 @@ run-app: bundle
 clean:
 	cargo clean
 	rm -rf dist
+
+# Broken relative links / #anchors in README.md and docs/
+docs-check:
+	scripts/check-docs.py
