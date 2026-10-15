@@ -43,17 +43,17 @@ impl Rgb {
 }
 
 // Base 8 colors (fixed design values).
-pub const BACKGROUND: Rgb = Rgb::from_hex(0x121212);
-pub const SURFACE: Rgb = Rgb::from_hex(0x1E1E1E);
+pub const BACKGROUND: Rgb = Rgb::from_hex(0x1C1C1C);
+pub const SURFACE: Rgb = Rgb::from_hex(0x262626);
 pub const TEXT_PRIMARY: Rgb = Rgb::from_hex(0xF4F7FF);
 pub const TEXT_SECONDARY: Rgb = Rgb::from_hex(0x9AA4B2);
 pub const ACCENT: Rgb = Rgb::from_hex(0x3B82F6);
-pub const RECORDING: Rgb = Rgb::from_hex(0xFF4D4D);
+pub const RECORDING: Rgb = Rgb::from_hex(0xFF4F6E);
 pub const SUCCESS: Rgb = Rgb::from_hex(0x22C55E);
-pub const BORDER: Rgb = Rgb::from_hex(0x333333);
+pub const BORDER: Rgb = Rgb::from_hex(0x3A3A3A);
 // Semantic additions.
 pub const WARNING: Rgb = Rgb::from_hex(0xF59E0B);
-pub const ERROR: Rgb = Rgb::from_hex(0xFF4D4D);
+pub const ERROR: Rgb = Rgb::from_hex(0xFF4F6E);
 
 // Overlay geometry (pt).
 pub const OVERLAY_WIDTH: f64 = 280.0;
@@ -81,14 +81,14 @@ mod tests {
 
     #[test]
     fn base_tokens_match_spec() {
-        assert_eq!(BACKGROUND, Rgb(0x12, 0x12, 0x12));
-        assert_eq!(SURFACE, Rgb(0x1E, 0x1E, 0x1E));
+        assert_eq!(BACKGROUND, Rgb(0x1C, 0x1C, 0x1C));
+        assert_eq!(SURFACE, Rgb(0x26, 0x26, 0x26));
         assert_eq!(TEXT_PRIMARY, Rgb(0xF4, 0xF7, 0xFF));
         assert_eq!(TEXT_SECONDARY, Rgb(0x9A, 0xA4, 0xB2));
         assert_eq!(ACCENT, Rgb(0x3B, 0x82, 0xF6));
-        assert_eq!(RECORDING, Rgb(0xFF, 0x4D, 0x4D));
+        assert_eq!(RECORDING, Rgb(0xFF, 0x4F, 0x6E));
         assert_eq!(SUCCESS, Rgb(0x22, 0xC5, 0x5E));
-        assert_eq!(BORDER, Rgb(0x33, 0x33, 0x33));
+        assert_eq!(BORDER, Rgb(0x3A, 0x3A, 0x3A));
     }
 
     #[test]
