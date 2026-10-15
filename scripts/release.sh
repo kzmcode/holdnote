@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 # Release automation (docs/04 "リリースごと"): audit, test, version bump, build, verify, tag, GitHub Release, tap update.
-# Usage: scripts/release.sh <version> [--dry-run] [--tap-dir PATH] [--no-whisper]
+# Usage: scripts/release.sh <version> [--dry-run] [--tap-dir PATH] [--no-whisper] [--changes FILE]
 #   --dry-run     run read-only checks and the local build; only print what git/GitHub steps would do.
 #                 Cargo.toml / Cargo.lock / THIRD_PARTY_LICENSES.txt are restored afterwards.
 #   --tap-dir     homebrew-tap checkout (default: ../homebrew-tap)
 #   --no-whisper  build without bundling whisper-cli
+#   --changes     Markdown file with the user-facing "変更点" list (default: commit subjects since the last tag)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION=""; DRY=0; TAP_DIR="$ROOT/../homebrew-tap"; WHISPER=1
+VERSION=""; DRY=0; TAP_DIR="$ROOT/../homebrew-tap"; WHISPER=1; CHANGES_FILE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY=1 ;;
     --no-whisper) WHISPER=0 ;;
+    --changes) CHANGES_FILE="${2:?--changes にはファイルが必要です}"; shift ;;
     --tap-dir) TAP_DIR="${2:?--tap-dir にはパスが必要です}"; shift ;;
     -h|--help) sed -n '2,8p' "$0"; exit 0 ;;
     -*) echo "不明なオプション: $1" >&2; exit 2 ;;
@@ -22,7 +24,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-[ -n "$VERSION" ] || { echo "使い方: scripts/release.sh <version> [--dry-run] [--tap-dir PATH] [--no-whisper]" >&2; exit 2; }
+[ -n "$VERSION" ] || { echo "使い方: scripts/release.sh <version> [--dry-run] [--tap-dir PATH] [--no-whisper] [--changes FILE]" >&2; exit 2; }
+if [ -n "${CHANGES_FILE:-}" ] && [ ! -f "$CHANGES_FILE" ]; then echo "--changes のファイルがありません: $CHANGES_FILE" >&2; exit 2; fi
 
 TAG="v$VERSION"
 STEP_N=0
@@ -132,7 +135,12 @@ act git push origin "$TAG"
 step "GitHub Release の作成"
 PREV="$(git describe --tags --abbrev=0 --match 'v*' "$( [ "$DRY" = 1 ] && echo HEAD || echo "$TAG^" )" 2>/dev/null || true)"
 if [ -n "$PREV" ]; then RANGE="$PREV..HEAD"; else RANGE="HEAD"; fi
-CHANGES="$(git log --pretty='- %s' --invert-grep --grep='^Release v' "$RANGE")"
+if [ -n "${CHANGES_FILE:-}" ]; then
+  CHANGES="$(cat "$CHANGES_FILE")"
+else
+  # Fallback: commit subjects (no merge commits). Prefer --changes with user-facing Japanese text.
+  CHANGES="$(git log --no-merges --pretty='- %s' --invert-grep --grep='^Release v' "$RANGE")"
+fi
 [ -n "$CHANGES" ] || CHANGES="- （変更履歴なし）"
 echo "  前回タグ: ${PREV:-なし}"
 NOTES="$TMP/notes.md"

@@ -26,8 +26,8 @@ verify:
 
 # make release VERSION=x.y.z [DRY_RUN=1] [NO_WHISPER=1] [TAP_DIR=path]
 release:
-	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z [DRY_RUN=1]" >&2; exit 2; }
-	scripts/release.sh $(VERSION) $(if $(DRY_RUN),--dry-run,) $(if $(NO_WHISPER),--no-whisper,) $(if $(TAP_DIR),--tap-dir $(TAP_DIR),)
+	@test -n "$(VERSION)" || { echo "usage: make release VERSION=x.y.z [CHANGES=file.md] [DRY_RUN=1]" >&2; exit 2; }
+	scripts/release.sh $(VERSION) $(if $(DRY_RUN),--dry-run,) $(if $(NO_WHISPER),--no-whisper,) $(if $(TAP_DIR),--tap-dir $(TAP_DIR),) $(if $(CHANGES),--changes $(CHANGES),)
 
 run-app: bundle
 	open dist/HoldNote.app

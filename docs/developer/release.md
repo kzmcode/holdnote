@@ -27,11 +27,19 @@ YOUR_ORG/homebrew-tap          Tap。Casks/holdnote.rb だけを置く（他の�
 ## リリース（`make release`）
 
 ```bash
-make release VERSION=0.2.0 DRY_RUN=1   # まず確認だけ（GitHub には何も送らない）
-make release VERSION=0.2.0             # 本番
+# 1. 利用者向けの変更点を日本語で書く（リリースノートの「変更点」になる）
+cat > /tmp/changes.md <<'EOF2'
+- **○○ を追加しました。** …
+- ○○ の不具合を修正しました。
+EOF2
+# 2. 確認だけ（GitHub には何も送らない）→ 本番
+make release VERSION=0.2.0 CHANGES=/tmp/changes.md DRY_RUN=1
+make release VERSION=0.2.0 CHANGES=/tmp/changes.md
 ```
 
-`scripts/release.sh <version> [--dry-run] [--tap-dir PATH] [--no-whisper]` が、次を順に実行します。途中で失敗するとそこで止まります。
+`CHANGES` を省略すると、前回のタグ以降のコミットメッセージ（マージを除く）が「変更点」に入ります。利用者には分かりにくいため、`CHANGES` の指定をおすすめします。
+
+`scripts/release.sh <version> [--dry-run] [--tap-dir PATH] [--no-whisper] [--changes FILE]` が、次を順に実行します。途中で失敗するとそこで止まります。
 
 | # | 内容 |
 |---|---|
@@ -41,7 +49,7 @@ make release VERSION=0.2.0             # 本番
 | 4 | `Cargo.toml` のバージョン更新、`THIRD_PARTY_LICENSES.txt` の再生成、コミット |
 | 5 | `scripts/bundle.sh --bundle-whisper` でビルドし、`scripts/verify-bundle.sh --transcribe` で検証 |
 | 6 | push、タグ `v<version>` の作成と push |
-| 7 | GitHub Release の作成（zip と SHA-256 を添付。リリースノートは `packaging/release-notes.md.in` から生成し、前回タグからのコミット一覧を「変更点」に入れる） |
+| 7 | GitHub Release の作成（zip と SHA-256 を添付。リリースノートは `packaging/release-notes.md.in` から生成し、`CHANGES` のファイル（なければ前回タグ以降のコミット一覧）を「変更点」に入れる） |
 | 8 | Release からダウンロードし直して SHA-256 を照合 |
 | 9 | Tap の `Casks/holdnote.rb` を `scripts/update-cask.sh --org <組織名>` で更新し、`brew style --fix` をかけてコミット・push |
 
